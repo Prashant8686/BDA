@@ -1,0 +1,519 @@
+PROGRAM 2 – HDFS FILE OPERATIONS USING JAVA FILESYSTEM API
+===========================================================
+
+STEP 1: Open PowerShell
+-----------------------
+
+cd C:\bda-labs
+
+mkdir lab2-hdfs
+
+cd lab2-hdfs
+
+
+STEP 2: Create Docker Compose File
+----------------------------------
+
+notepad docker-compose.yml
+
+Paste:
+
+services:
+  namenode:
+    image: apache/hadoop:3.3.6
+    hostname: namenode
+    command: ["hdfs", "namenode"]
+    ports:
+      - "9870:9870"
+    env_file: ./config
+    environment:
+      ENSURE_NAMENODE_DIR: "/tmp/hadoop-root/dfs/name"
+
+  datanode:
+    image: apache/hadoop:3.3.6
+    command: ["hdfs", "datanode"]
+    env_file: ./config
+
+Save and close Notepad.
+
+
+STEP 3: Create Hadoop Configuration File
+----------------------------------------
+
+notepad config
+
+Paste:
+
+CORE-SITE.XML_fs.default.name=hdfs://namenode
+CORE-SITE.XML_fs.defaultFS=hdfs://namenode
+HDFS-SITE.XML_dfs.namenode.rpc-address=namenode:8020
+HDFS-SITE.XML_dfs.replication=1
+
+Save and close Notepad.
+
+
+STEP 4: Start Hadoop Services
+----------------------------
+
+docker compose up -d
+
+Wait approximately 15 seconds.
+
+
+STEP 5: Check Hadoop Services
+----------------------------
+
+docker compose ps
+
+Both namenode and datanode should show:
+
+Up
+
+
+STEP 6: Enter NameNode Container
+--------------------------------
+
+docker compose exec namenode bash
+
+
+STEP 7: Create HDFS User Directory
+----------------------------------
+
+hdfs dfs -mkdir -p /user/student
+
+
+STEP 8: Check HDFS Directory
+----------------------------
+
+hdfs dfs -ls /user
+
+
+STEP 9: Exit Container
+---------------------
+
+exit
+
+
+STEP 10: Create Java Program
+---------------------------
+
+notepad HdfsDemo.java
+
+Paste the following complete Java program:
+
+import java.net.URI;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.Path;
+
+public class HdfsDemo {
+
+    public static void main(String[] args) throws Exception {
+
+        String uri = "hdfs://namenode:8020";
+
+        Configuration conf = new Configuration();
+
+        FileSystem fs =
+            FileSystem.get(URI.create(uri), conf);
+
+        Path file =
+            new Path("/user/student/quangle.txt");
+
+        FSDataOutputStream out =
+            fs.create(file);
+
+        out.writeBytes(
+            "On the top of the Crumpetty Tree\n");
+
+        out.writeBytes(
+            "The Quangle Wangle sat\n");
+
+        out.close();
+
+        System.out.println(
+            "Wrote file: " + file);
+
+        FSDataInputStream in =
+            fs.open(file);
+
+        byte[] buffer = new byte[32];
+
+        in.read(buffer);
+
+        System.out.println(
+            "From start : " +
+            new String(buffer).trim());
+
+        in.seek(33);
+
+        byte[] buf2 = new byte[32];
+
+        in.read(buf2);
+
+        System.out.println(
+            "After seek : " +
+            new String(buf2).trim());
+
+        in.close();
+
+        FileStatus st =
+            fs.getFileStatus(file);
+
+        System.out.println(
+            "Length : " +
+            st.getLen() +
+            " bytes");
+
+        System.out.println(
+            "Replication: " +
+            st.getReplication());
+
+        System.out.println(
+            "--- listStatus /user/student ---");
+
+        for (FileStatus s :
+             fs.listStatus(
+                 new Path("/user/student"))) {
+
+            System.out.println(
+                " " + s.getPath().getName());
+        }
+
+        System.out.println(
+            "--- globStatus *.txt ---");
+
+        for (FileStatus s :
+             fs.globStatus(
+                 new Path("/user/student/*.txt"))) {
+
+            System.out.println(
+                " " + s.getPath().getName());
+        }
+
+        fs.close();
+    }
+}
+
+Save and close Notepad.
+
+
+STEP 11: Check Java
+-------------------
+
+javac -version
+
+Expected:
+
+javac 17.0.12
+
+
+STEP 12: Copy Hadoop Libraries from Docker
+------------------------------------------
+
+docker cp lab2-hdfs-namenode-1:/opt/hadoop/share/hadoop/common .
+
+Check:
+
+dir common
+
+
+STEP 13: Compile Java Program
+----------------------------
+
+javac --release 8 -cp "common\*;common\lib\*" HdfsDemo.java
+
+If there is no error, check:
+
+dir HdfsDemo.class
+
+
+STEP 14: Create JAR File
+-----------------------
+
+jar -cvf hdfsdemo.jar HdfsDemo.class
+
+Check:
+
+dir hdfsdemo.jar
+
+
+STEP 15: Copy JAR to NameNode
+----------------------------
+
+docker cp hdfsdemo.jar lab2-hdfs-namenode-1:/tmp/hdfsdemo.jar
+
+
+STEP 16: Enter NameNode Container
+---------------------------------
+
+docker compose exec namenode bash
+
+
+STEP 17: Go to /tmp
+-------------------
+
+cd /tmp
+
+
+STEP 18: Check JAR File
+----------------------
+
+ls -l hdfsdemo.jar
+
+
+STEP 19: Run Java Program
+-------------------------
+
+hadoop jar hdfsdemo.jar HdfsDemo
+
+
+EXPECTED OUTPUT:
+
+Wrote file: /user/student/quangle.txt
+
+From start : On the top of the Crumpetty Tree
+
+After seek : The Quangle Wangle sat
+
+Length : 56 bytes
+
+Replication: 1
+
+--- listStatus /user/student ---
+
+ quangle.txt
+
+--- globStatus *.txt ---
+
+ quangle.txt
+
+
+STEP 20: Display HDFS File
+--------------------------
+
+hdfs dfs -cat /user/student/quangle.txt
+
+
+EXPECTED OUTPUT:
+
+On the top of the Crumpetty Tree
+The Quangle Wangle sat
+
+
+STEP 21: Create Another HDFS File
+---------------------------------
+
+echo "hello hdfs" | hdfs dfs -put - /user/student/notes.txt
+
+
+STEP 22: Check Files
+-------------------
+
+hdfs dfs -ls /user/student
+
+
+EXPECTED:
+
+notes.txt
+quangle.txt
+
+
+STEP 23: Run Java Program Again
+------------------------------
+
+hadoop jar hdfsdemo.jar HdfsDemo
+
+
+EXPECTED:
+
+--- listStatus /user/student ---
+
+quangle.txt
+notes.txt
+
+--- globStatus *.txt ---
+
+quangle.txt
+notes.txt
+
+
+STEP 24: Exit Container
+-----------------------
+
+exit
+
+
+STEP 25: Stop Hadoop Services
+----------------------------
+
+docker compose down
+
+
+===========================================================
+VIVA EXPLANATION
+===========================================================
+
+AIM:
+
+To perform HDFS file operations using the Hadoop Java
+FileSystem API.
+
+
+EXPLANATION:
+
+This program connects a Java program to HDFS using the
+NameNode address hdfs://namenode:8020.
+
+It creates a file called quangle.txt inside the
+/user/student directory.
+
+It writes text into the file using FSDataOutputStream.
+
+It reads the file using FSDataInputStream.
+
+The seek() method moves the file pointer to a particular
+byte position and reads the data from that position.
+
+getFileStatus() is used to obtain the file length and
+replication factor.
+
+listStatus() is used to list files in the directory.
+
+globStatus() is used to search files using a pattern such
+as *.txt.
+
+Therefore, the program demonstrates basic HDFS file
+operations using the Hadoop Java FileSystem API.
+
+
+IMPORTANT METHODS:
+
+FileSystem.get()
+    -> Connects to HDFS.
+
+fs.create()
+    -> Creates a file in HDFS.
+
+FSDataOutputStream
+    -> Writes data to the HDFS file.
+
+fs.open()
+    -> Opens an HDFS file for reading.
+
+FSDataInputStream
+    -> Reads data from the HDFS file.
+
+seek()
+    -> Moves the file pointer to a specific position.
+
+getFileStatus()
+    -> Gets file information.
+
+listStatus()
+    -> Lists files/directories.
+
+globStatus()
+    -> Searches files using a pattern.
+
+fs.close()
+    -> Closes the HDFS connection.
+
+
+COMMON VIVA QUESTIONS:
+
+Q1. What is HDFS?
+
+Answer:
+HDFS stands for Hadoop Distributed File System. It is used
+to store large amounts of data in a distributed environment.
+
+
+Q2. What is NameNode?
+
+Answer:
+NameNode manages the metadata and file structure of HDFS.
+
+
+Q3. What is DataNode?
+
+Answer:
+DataNode stores the actual data blocks.
+
+
+Q4. What does fs.create() do?
+
+Answer:
+It creates a new file in HDFS.
+
+
+Q5. What does fs.open() do?
+
+Answer:
+It opens an HDFS file for reading.
+
+
+Q6. What does seek() do?
+
+Answer:
+It moves the file pointer to a specified byte position.
+
+
+Q7. What does getFileStatus() do?
+
+Answer:
+It provides information about the file such as file length
+and replication factor.
+
+
+Q8. Difference between listStatus() and globStatus()?
+
+Answer:
+listStatus() lists files and directories.
+
+globStatus() lists files matching a specified pattern.
+
+
+Q9. What is replication factor?
+
+Answer:
+Replication factor specifies how many copies of an HDFS
+data block are maintained.
+
+In this program the replication factor is 1.
+
+
+Q10. What is the main purpose of this program?
+
+Answer:
+The main purpose is to demonstrate HDFS file operations
+using Java FileSystem API.
+
+
+===========================================================
+MEMORIZE THIS FLOW:
+===========================================================
+
+Connect
+   ↓
+Create file
+   ↓
+Write
+   ↓
+Read
+   ↓
+Seek
+   ↓
+Get file information
+   ↓
+List files
+   ↓
+Search *.txt
+   ↓
+Display file
+   ↓
+Finish
+===========================================================
